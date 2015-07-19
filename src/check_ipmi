@@ -1,0 +1,88 @@
+#!/usr/bin/env python
+
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+
+import argparse, sys, subprocess
+
+return_code = 0
+text = ""
+warnings = ""
+criticals = ""
+size_threshold_warning = 50
+size_threshold_critical = 60
+
+def parseargs():
+    global size_threshold_warning, size_threshold_critical
+    parser = argparse.ArgumentParser(description = 'Check ipmi, designed for use with icinga or nagios')
+    parser.add_argument('-v', '--verbose', action='count', help='Change the program verbosity, by default program prints nothing unless there is some error')
+    parser.add_argument('-V', '--version', version='check_disk 1.0.0.0', action='version')
+    parser.add_argument('-w', '--warning', type=int, default=50, help='Set warning threshold')
+    parser.add_argument('-c', '--critical', type=int, default=60, help="Set critical threshold")
+    parser.add_argument('-f', '--flip', type=bool, default=False, help="If set, the thresholds will be checked upside down (use this for RPM checks")
+    parser.add_argument('-o', '--tolerance', type=bool, default=False, help="Use this for voltage")
+    parser.add_argument('-s', '--sensor', type=str, help='Sensor you want to test')
+    args = parser.parse_args()
+    if (args.verbose is None):
+        args.verbose = 0;
+    size_threshold_warning = int(args.warning)
+    size_threshold_critical = int(args.critical)
+    return args;
+
+def is_warning(percent, free):
+    if (threshold_percent):
+        return percent <= size_threshold_warning
+    else:
+        return free <= size_threshold_warning
+
+def is_critical(percent, free):
+    if (threshold_percent):
+        return percent <= size_threshold_critical
+    else:
+        return free <= size_threshold_critical
+
+args = parseargs();
+
+lines = subprocess.check_output(['ipmi', 'sdr'])
+found = False
+status = "OK"
+
+for l in lines.split('\n'):
+    parts = l.split('|')
+    name = parts[0].strip()
+    if (args.sensor == name):
+        numeric = int(parts[1].strip().split(" ")[0])
+        text = str(numeric)
+        if (args.flip):
+            if (numeric < size_threshold_warning):
+                return_code = 1
+            if (numeric < size_threshold_critical):
+                return_code = 2
+        else:
+            if (numeric > size_threshold_warning):
+                return_code = 1
+            if (numeric > size_threshold_critical):
+                return_code = 2
+        found = True
+
+if (return_code == 1):
+    status = "WARNING"
+if (return_code == 2):
+    status = "CRITICAL"
+
+if (not found):
+     status = "UNKNOWN"
+     return_code = 3
+     text = "Sensor not found"
+
+print (status + " " + criticals + warnings + text);
+
+sys.exit(return_code);
+
